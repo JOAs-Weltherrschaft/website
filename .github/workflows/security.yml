@@ -13,7 +13,7 @@ jobs:
     name: secrets (gitleaks)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Install gitleaks
@@ -38,14 +38,14 @@ jobs:
     runs-on: ubuntu-latest
     container: semgrep/semgrep
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: semgrep scan --config p/default --config p/secrets --severity ERROR --error --metrics off
 
   deps:
     name: dependencies (npm audit)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: |
           if [ -f package-lock.json ]; then
             npm audit --audit-level=high --omit=dev

@@ -1,0 +1,6 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Dependencies are scanned by npm audit, not gitleaks"
+paths = ['''node_modules/''', '''package-lock\.json''']

@@ -1,0 +1,54 @@
+name: security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  secrets:
+    name: secrets (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install gitleaks
+        run: |
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz | tar xz gitleaks
+          sudo mv gitleaks /usr/local/bin/
+      - name: Scan full git history
+        run: gitleaks git --redact --verbose .
+      - name: Build site (only if package.json has a build script)
+        run: |
+          if [ -f package.json ] && node -e "process.exit(require('./package.json').scripts?.build ? 0 : 1)"; then
+            if [ -f package-lock.json ]; then npm ci; else npm install; fi
+            npm run build
+          else
+            echo "No build step."
+          fi
+      - name: Scan all files incl. build output
+        run: gitleaks dir --redact --verbose .
+
+  code:
+    name: code (semgrep)
+    runs-on: ubuntu-latest
+    container: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@v4
+      - run: semgrep scan --config p/default --config p/secrets --severity ERROR --error --metrics off
+
+  deps:
+    name: dependencies (npm audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          if [ -f package-lock.json ]; then
+            npm audit --audit-level=high --omit=dev
+          else
+            echo "No package-lock.json - nothing to audit."
+          fi

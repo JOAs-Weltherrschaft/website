@@ -1,0 +1,14 @@
+# Secrets - never commit
+.env
+.env.*
+!.env.example
+.dev.vars
+*.pem
+*.key
+
+# Build / deps
+node_modules/
+dist/
+build/
+.wrangler/
+.DS_Store

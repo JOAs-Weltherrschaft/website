@@ -1,0 +1,55 @@
+name: claude-review
+
+# pull_request_target runs THIS file from main, never a modified copy from the PR.
+# The PR code is never checked out or executed here - only its diff is sent as text.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4   # base branch (main) only - for the prompt file
+      - name: Review diff with Claude
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "Secret ANTHROPIC_API_KEY not set - skipping review."
+            exit 0
+          fi
+          gh pr diff "$PR" -R "$REPO" > diff.txt
+          gh pr view "$PR" -R "$REPO" --json title,body,files \
+            --jq '"Titel: \(.title)\n\nBeschreibung:\n\(.body)\n\nGeänderte Dateien:\n" + ([.files[] | "- \(.path) (+\(.additions) -\(.deletions))"] | join("\n"))' > meta.txt
+          SIZE=$(wc -c < diff.txt)
+          head -c 150000 diff.txt > diff_cut.txt
+
+          jq -n \
+            --rawfile sys .github/review-prompt.md \
+            --rawfile meta meta.txt \
+            --rawfile diff diff_cut.txt \
+            --arg size "$SIZE" \
+            '{model: "claude-sonnet-5-5", max_tokens: 3000, system: $sys,
+              messages: [{role: "user", content:
+                ("<pr_meta>\n" + $meta + "\n</pr_meta>\n\n<diff bytes_total=\"" + $size + "\">\n" + $diff + "\n</diff>")}]}' > req.json
+
+          curl -sS https://api.anthropic.com/v1/messages \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "content-type: application/json" \
+            --data @req.json > resp.json
+
+          if ! jq -e '.content[0].text' resp.json > /dev/null; then
+            echo "API error:"; jq '.error // .' resp.json
+            exit 1
+          fi
+          { echo "## 🤖 Sicherheits-Review"; echo; jq -r '.content[0].text' resp.json; } > review.md
+          gh pr comment "$PR" -R "$REPO" --body-file review.md
